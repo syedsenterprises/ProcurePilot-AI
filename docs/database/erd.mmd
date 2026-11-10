@@ -1,0 +1,236 @@
+erDiagram
+  %% ============================================================================
+  %% ProcurePilot AI — Authoritative PostgreSQL Entity-Relationship Diagram (ERD)
+  %% Reflects Sequential Migrations 001–008 & Immutability / Provenance Controls
+  %% ============================================================================
+
+  ORGANIZATIONS {
+    uuid id PK "UUID DEFAULT gen_random_uuid()"
+    varchar name "VARCHAR(255) NOT NULL CHECK >= 2"
+    varchar slug UK "VARCHAR(64) UNIQUE CHECK ^[a-z0-9-]+$"
+    varchar currency "VARCHAR(3) DEFAULT 'USD'"
+    timestamptz created_at "TIMESTAMPTZ DEFAULT NOW()"
+    timestamptz updated_at "TIMESTAMPTZ DEFAULT NOW()"
+  }
+
+  PROCUREMENT_REQUESTS {
+    uuid id PK "UUID DEFAULT gen_random_uuid()"
+    uuid organization_id FK "REFERENCES organizations(id)"
+    varchar session_token_hash "VARCHAR(64)"
+    varchar department "VARCHAR(128)"
+    text user_query "TEXT NOT NULL CHECK >= 3"
+    numeric extracted_budget "NUMERIC(12,2) CHECK >= 0"
+    varchar status "VARCHAR(32) DRAFT|CONVERTED|ABANDONED"
+    timestamptz created_at "TIMESTAMPTZ DEFAULT NOW()"
+  }
+
+  APPROVAL_TICKETS {
+    varchar ticket_id PK "VARCHAR(64) PRIMARY KEY"
+    uuid organization_id FK "REFERENCES organizations(id)"
+    uuid procurement_request_id FK "COMPOSITE FK (org_id, request_id)"
+    varchar nonce "VARCHAR(64) CHECK length=64"
+    varchar cart_fingerprint "VARCHAR(64) CHECK length=64"
+    varchar challenge_signature "VARCHAR(64) NULL allowed for legacy"
+    numeric verified_subtotal "NUMERIC(12,2) CHECK >= 0"
+    numeric verified_tax "NUMERIC(12,2) CHECK >= 0"
+    numeric verified_shipping "NUMERIC(12,2) CHECK >= 0"
+    numeric verified_total "NUMERIC(12,2) CHECK > 0"
+    varchar currency "VARCHAR(3) DEFAULT 'USD'"
+    varchar status "PENDING_APPROVAL|APPROVED|CONSUMED|EXPIRED"
+    varchar session_token_hash "VARCHAR(64)"
+    varchar approver_name "VARCHAR(128)"
+    varchar approver_department "VARCHAR(128)"
+    text purchase_justification "TEXT"
+    varchar identity_tier "SELF_ATTESTED_REQUISITIONER"
+    varchar source_origin "M005: RUNTIME|LEGACY_JSON_IMPORT"
+    varchar integrity_status "M005: VERIFIED|UNVERIFIABLE_LEGACY"
+    timestamptz expires_at "TIMESTAMPTZ (10-minute TTL)"
+    timestamptz signed_at "TIMESTAMPTZ NULL"
+    timestamptz consumed_at "TIMESTAMPTZ NULL"
+    timestamptz created_at "TIMESTAMPTZ DEFAULT NOW()"
+  }
+
+  APPROVAL_TICKET_ITEMS {
+    bigserial id PK "BIGSERIAL PRIMARY KEY"
+    varchar ticket_id FK "REFERENCES approval_tickets(ticket_id) ON DELETE CASCADE"
+    varchar product_id "VARCHAR(64) NOT NULL"
+    varchar product_name "VARCHAR(255) NOT NULL"
+    integer quantity "INTEGER CHECK quantity > 0"
+    numeric unit_price "NUMERIC(12,2) CHECK unit_price > 0"
+    numeric line_total "NUMERIC(12,2) CHECK line_total = qty * price"
+  }
+
+  ORDERS {
+    uuid id PK "UUID DEFAULT gen_random_uuid()"
+    varchar order_number UK "VARCHAR(32) UNIQUE"
+    uuid organization_id FK "REFERENCES organizations(id)"
+    varchar ticket_id UK_FK "VARCHAR(64) UNIQUE COMPOSITE FK"
+    varchar external_order_id UK "VARCHAR(64) UNIQUE NULL"
+    varchar provider "VARCHAR(32) DEFAULT 'PAYPAL'"
+    varchar provider_environment "VARCHAR(16) SANDBOX|LIVE"
+    varchar status "12 Canonical States: DRAFT..COMPLETED..REFUNDED"
+    numeric authorized_total "NUMERIC(12,2) CHECK total > 0"
+    numeric authorized_subtotal "NUMERIC(12,2) CHECK >= 0"
+    numeric authorized_tax "NUMERIC(12,2) CHECK >= 0"
+    numeric authorized_shipping "NUMERIC(12,2) CHECK >= 0"
+    varchar currency "VARCHAR(3) DEFAULT 'USD'"
+    varchar approver_name "VARCHAR(128)"
+    varchar approver_department "VARCHAR(128)"
+    varchar idempotency_key UK "VARCHAR(128) UNIQUE"
+    boolean is_simulated "BOOLEAN NULL"
+    varchar is_simulated_provenance "EXPLICIT_PROVIDER|LOCAL_TEST_HARNESS|..."
+    varchar simulated_reason "VARCHAR(255)"
+    varchar source_origin "ONLINE_CHECKOUT|RUNTIME|LEGACY_JSON_IMPORT"
+    timestamptz created_at "TIMESTAMPTZ DEFAULT NOW()"
+    timestamptz updated_at "TIMESTAMPTZ DEFAULT NOW()"
+  }
+
+  ORDER_ITEMS {
+    bigserial id PK "BIGSERIAL PRIMARY KEY"
+    uuid organization_id FK "COMPOSITE FK with order_id"
+    uuid order_id FK "REFERENCES orders(org_id, id) ON DELETE RESTRICT"
+    varchar product_id "VARCHAR(64) NOT NULL"
+    varchar product_name "VARCHAR(255) NOT NULL"
+    integer quantity "INTEGER CHECK quantity > 0"
+    numeric unit_price "NUMERIC(12,2) CHECK unit_price > 0"
+    numeric line_total "NUMERIC(12,2) CHECK line_total = qty * price"
+  }
+
+  PAYMENT_ATTEMPTS {
+    uuid id PK "UUID DEFAULT gen_random_uuid()"
+    uuid order_id FK "REFERENCES orders(id)"
+    varchar action_type "CREATE_ORDER|CAPTURE|REFUND"
+    varchar provider "VARCHAR(32) DEFAULT 'PAYPAL'"
+    varchar idempotency_key UK "VARCHAR(128) UNIQUE"
+    varchar provider_request_id "VARCHAR(128)"
+    varchar status "PREPARED|DISPATCHED|SUCCEEDED|FAILED|..."
+    jsonb request_payload "JSONB"
+    integer response_status "INTEGER"
+    jsonb response_payload "JSONB"
+    text error_message "TEXT"
+    integer attempt_number "INTEGER DEFAULT 1"
+    timestamptz initiated_at "TIMESTAMPTZ DEFAULT NOW()"
+    timestamptz completed_at "TIMESTAMPTZ NULL"
+  }
+
+  PAYMENT_CAPTURES {
+    uuid id PK "UUID DEFAULT gen_random_uuid()"
+    uuid order_id FK "REFERENCES orders(id)"
+    varchar external_capture_id UK "VARCHAR(64) UNIQUE"
+    uuid payment_attempt_id FK "REFERENCES payment_attempts(id) NULL"
+    numeric captured_amount "NUMERIC(12,2) CHECK amount > 0"
+    varchar currency "VARCHAR(3) DEFAULT 'USD'"
+    numeric transaction_fee "NUMERIC(12,2) CHECK >= 0"
+    numeric net_amount "NUMERIC(12,2) CHECK >= 0"
+    varchar payer_email "VARCHAR(255)"
+    varchar payer_id "VARCHAR(64)"
+    varchar capture_origin "PAYPAL_API|LOCAL_SYNTHETIC_TEST|..."
+    varchar simulated_reason "VARCHAR(255)"
+    timestamptz captured_at "TIMESTAMPTZ"
+    timestamptz created_at "TIMESTAMPTZ DEFAULT NOW()"
+  }
+
+  PAYMENT_REFUNDS {
+    uuid id PK "UUID DEFAULT gen_random_uuid()"
+    uuid order_id FK "COMPOSITE FK with capture_id"
+    uuid capture_id FK "REFERENCES payment_captures(order_id, id) ON DELETE RESTRICT"
+    uuid payment_attempt_id FK "REFERENCES payment_attempts(id) NULL"
+    varchar external_refund_id UK "VARCHAR(64) UNIQUE"
+    numeric refund_amount "NUMERIC(12,2) CHECK refund_amount > 0"
+    varchar currency "VARCHAR(3) DEFAULT 'USD'"
+    text reason "TEXT"
+    timestamptz refunded_at "TIMESTAMPTZ NOT NULL"
+    timestamptz created_at "TIMESTAMPTZ DEFAULT NOW()"
+  }
+
+  PAYMENT_EVENTS {
+    bigserial id PK "BIGSERIAL PRIMARY KEY"
+    uuid order_id FK "REFERENCES orders(id)"
+    varchar event_type "VARCHAR(64) NOT NULL"
+    varchar previous_status "VARCHAR(32)"
+    varchar new_status "VARCHAR(32) NOT NULL"
+    numeric amount "NUMERIC(12,2)"
+    jsonb context "JSONB"
+    timestamptz occurred_at "TIMESTAMPTZ DEFAULT NOW() (APPEND-ONLY)"
+  }
+
+  ORDER_STATE_TRANSITION_AUDIT {
+    bigserial id PK "M006: BIGSERIAL PRIMARY KEY"
+    uuid order_id FK "REFERENCES orders(id) ON DELETE RESTRICT"
+    varchar order_number "VARCHAR(32) NOT NULL"
+    varchar old_status "VARCHAR(32) NOT NULL"
+    varchar new_status "VARCHAR(32) NOT NULL"
+    text transition_reason "TEXT"
+    varchar operator_identity "M007: VARCHAR(128) NOT NULL"
+    timestamptz reconciled_at "TIMESTAMPTZ DEFAULT NOW() (APPEND-ONLY)"
+    varchar session_user_val "VARCHAR(64) NOT NULL"
+    varchar current_user_val "VARCHAR(64) NOT NULL"
+  }
+
+  WEBHOOK_EVENTS {
+    varchar id PK "VARCHAR(64) PRIMARY KEY"
+    varchar event_type "VARCHAR(64) NOT NULL"
+    varchar resource_type "VARCHAR(64) NOT NULL"
+    varchar resource_id "VARCHAR(64)"
+    varchar payload_sha256 "VARCHAR(64) CHECK length=64"
+    jsonb raw_payload "JSONB NOT NULL"
+    varchar processing_status "RECEIVED|PROCESSING|PROCESSED|FAILED|IGNORED"
+    integer processing_attempts "INTEGER DEFAULT 0"
+    integer max_processing_attempts "INTEGER DEFAULT 5"
+    boolean tamper_flag "BOOLEAN DEFAULT FALSE"
+    text last_error_message "TEXT"
+    timestamptz first_received_at "TIMESTAMPTZ DEFAULT NOW()"
+    timestamptz processed_at "TIMESTAMPTZ NULL"
+  }
+
+  WEBHOOK_TRANSMISSIONS {
+    uuid id PK "UUID DEFAULT gen_random_uuid()"
+    varchar transmission_id UK "VARCHAR(128) UNIQUE"
+    varchar event_id FK "REFERENCES webhook_events(id) ON DELETE SET NULL"
+    integer delivery_attempt_number "INTEGER DEFAULT 1"
+    text raw_body_text "TEXT NOT NULL"
+    varchar payload_sha256 "VARCHAR(64) CHECK length=64"
+    varchar auth_algo "VARCHAR(64)"
+    text cert_url "TEXT"
+    text transmission_sig "TEXT"
+    timestamptz transmission_time "TIMESTAMPTZ"
+    varchar verification_status "VERIFIED|FAILED|SIMULATED"
+    integer http_status_returned "INTEGER NOT NULL"
+    timestamptz first_received_at "TIMESTAMPTZ DEFAULT NOW()"
+    timestamptz last_delivery_at "TIMESTAMPTZ DEFAULT NOW()"
+  }
+
+  AUDIT_EVENTS {
+    bigserial id PK "BIGSERIAL PRIMARY KEY"
+    varchar event_type "VARCHAR(64) NOT NULL"
+    varchar severity "INFO|WARN|ERROR|CRITICAL"
+    text message "TEXT NOT NULL"
+    varchar session_id "VARCHAR(64)"
+    inet ip_address "INET"
+    jsonb details "JSONB"
+    timestamptz created_at "TIMESTAMPTZ DEFAULT NOW() (APPEND-ONLY)"
+  }
+
+  %% ============================================================================
+  %% Relationships & Cardinalities
+  %% ============================================================================
+
+  ORGANIZATIONS ||--o{ PROCUREMENT_REQUESTS : "tenant_owns"
+  ORGANIZATIONS ||--o{ APPROVAL_TICKETS : "tenant_owns"
+  ORGANIZATIONS ||--o{ ORDERS : "tenant_owns"
+
+  PROCUREMENT_REQUESTS ||--o{ APPROVAL_TICKETS : "originates (composite_fk: org_id, request_id)"
+  APPROVAL_TICKETS ||--o{ APPROVAL_TICKET_ITEMS : "contains_items (CASCADE)"
+  APPROVAL_TICKETS ||--o| ORDERS : "authorizes (composite_fk: org_id, ticket_id; UNIQUE)"
+
+  ORDERS ||--o{ ORDER_ITEMS : "contains_items (composite_fk: org_id, order_id; RESTRICT)"
+  ORDERS ||--o{ PAYMENT_ATTEMPTS : "tracks_attempts"
+  ORDERS ||--o{ PAYMENT_CAPTURES : "settles_captures"
+  ORDERS ||--o{ PAYMENT_EVENTS : "appends_financial_history (APPEND-ONLY)"
+  ORDERS ||--o{ ORDER_STATE_TRANSITION_AUDIT : "appends_status_reconciliation (APPEND-ONLY)"
+
+  PAYMENT_ATTEMPTS |o--o{ PAYMENT_CAPTURES : "dispatches_capture"
+  PAYMENT_CAPTURES ||--o{ PAYMENT_REFUNDS : "reverses_funds (composite_fk: order_id, capture_id; RESTRICT)"
+  PAYMENT_ATTEMPTS |o--o{ PAYMENT_REFUNDS : "dispatches_refund"
+
+  WEBHOOK_EVENTS ||--o{ WEBHOOK_TRANSMISSIONS : "logs_transmissions (SET NULL)"

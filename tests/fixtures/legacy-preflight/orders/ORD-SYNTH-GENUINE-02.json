@@ -1,0 +1,23 @@
+{
+  "orderId": "ORD-SYNTH-GENUINE-02",
+  "ticketId": "appr_tk_synth_002",
+  "status": "CAPTURED",
+  "authorizedTotal": "294.54",
+  "authorizedSubtotal": "280.00",
+  "authorizedTax": "14.54",
+  "authorizedShipping": "0.00",
+  "currency": "USD",
+  "approverName": "Bob Approver",
+  "approverDepartment": "Operations",
+  "isSimulated": false,
+  "captureId": "3D2952419L1477011",
+  "capturedAt": "2026-11-09T12:00:00.000Z",
+  "items": [
+    {
+      "id": "item1",
+      "name": "Synthetic Genuine Monitor",
+      "price": "280.00",
+      "quantity": 1
+    }
+  ]
+}

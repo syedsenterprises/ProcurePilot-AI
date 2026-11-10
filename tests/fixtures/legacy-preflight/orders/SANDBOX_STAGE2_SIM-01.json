@@ -1,0 +1,22 @@
+{
+  "orderId": "SANDBOX_STAGE2_SIM-01",
+  "ticketId": "appr_tk_synth_003",
+  "status": "CAPTURED",
+  "authorizedTotal": "1401.84",
+  "authorizedSubtotal": "1350.00",
+  "authorizedTax": "51.84",
+  "authorizedShipping": "0.00",
+  "currency": "USD",
+  "isSimulated": true,
+  "simulatedReason": "SYNTHETIC_DEV_TEST_ORDER",
+  "captureId": "CAP_SANDBOX_STAGE2_SIM01",
+  "capturedAt": "2026-11-09T10:00:00.000Z",
+  "items": [
+    {
+      "id": "item1",
+      "name": "Simulated Stand",
+      "price": "1350.00",
+      "quantity": 1
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "orderId": "ORD-SYNTH-GENUINE-01",
+  "ticketId": "appr_tk_synth_001",
+  "status": "CREATED",
+  "authorizedTotal": "294.54",
+  "authorizedSubtotal": "280.00",
+  "authorizedTax": "14.54",
+  "authorizedShipping": "0.00",
+  "currency": "USD",
+  "approverName": "Alice Reviewer",
+  "approverDepartment": "Engineering",
+  "isSimulated": false,
+  "items": [
+    {
+      "id": "item1",
+      "name": "Synthetic Test Hardware",
+      "price": "280.00",
+      "quantity": 1
+    }
+  ]
+}

@@ -1,26 +1,44 @@
 {
-  "name": "temp-app",
+  "name": "procurepilot-ai",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "type-check": "tsc --noEmit",
+    "db:migrate": "tsx src/db/migrator.ts run",
+    "db:migrate:status": "tsx src/db/migrator.ts status",
+    "legacy:preflight": "tsx src/db/legacy-preflight.ts",
+    "legacy:migrate": "tsx src/db/legacy-migration.ts",
+    "test": "tsx tests/run-all-tests.ts",
+    "test:db": "tsx tests/db/run-db-tests.ts",
+    "test:db:live": "tsx tests/db/live-postgres-validation.ts",
+    "test:db:rehearsal": "tsx tests/db/legacy-migration-rehearsal.test.ts",
+    "test:db:shadow": "tsx tests/db/shadow-read-validation.test.ts",
+    "test:live": "tsx tests/integration/gemini-live-tools.test.ts"
   },
   "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.70.0",
     "next": "16.4.5",
+    "pg": "^8.23.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

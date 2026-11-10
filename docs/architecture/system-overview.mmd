@@ -1,0 +1,138 @@
+flowchart TD
+  %% ============================================================================
+  %% ProcurePilot AI — End-to-End System Architecture & Security Trust Boundaries
+  %% ============================================================================
+
+  subgraph CLIENT_ZONE ["Client Browser (Untrusted Zone)"]
+    direction TB
+    UI_LANDING["Landing Page (/)<br/>Marketing & Product Showcase"]
+    UI_DASHBOARD["Procurement Dashboard (/dashboard)<br/>Tab Controller: Copilot & Catalogue"]
+    UI_COPILOT["ProcurementChat & PromptPresets<br/>Natural Language RFQ Input"]
+    UI_COMPARISON["ComparisonModal & ComparisonTable<br/>Multi-Product Spec Comparison"]
+    UI_CART["CartDrawer & ItemRow<br/>Client Cart State (CartContext)"]
+    UI_GATE["HumanApprovalGate Modal<br/>Digital Requisition Signoff"]
+  end
+
+  subgraph NEXTJS_API ["Next.js App Router & API Boundaries (Protected Server Boundary)"]
+    direction TB
+    API_PROCURE["POST /api/procure<br/>• Rate Limit: 10 req/min<br/>• Input Sanitization (Zod)"]
+    API_CATALOG["GET /api/catalog<br/>• Catalogue Retrieval & Filters"]
+    API_CART_VAL["POST /api/cart/validate<br/>• Rate Limit: 30 req/min<br/>• Server-Side Price Re-calculation"]
+    API_APPR_CHALLENGE["POST /api/approval/challenge<br/>• Rate Limit: 15 req/min<br/>• Session Cookie Injection"]
+    API_APPR_SIGN["POST /api/approval/sign<br/>• Challenge Signature Verification<br/>• Single-Use Auth Token Generation"]
+    API_PAYPAL_CREATE["POST /api/paypal/create-order<br/>• Rate Limit: 10 req/min<br/>• Ticket Consumption & Cart Binding"]
+    API_PAYPAL_CAPTURE["POST /api/paypal/capture-order<br/>• Capture Order Authorization"]
+    API_PAYPAL_WEBHOOK["POST /api/paypal/webhook<br/>• PayPal Signature Verification"]
+  end
+
+  subgraph CORE_SERVICES ["Core Application Services (Zero-Trust Enforcement Layer)"]
+    direction TB
+    SVC_CATALOG["CatalogService<br/>• Authoritative 14-Item Benchmark Catalog<br/>• Strict Decimal Pricing & Tax Logic<br/>• Zero Client Price Trust"]
+    
+    subgraph AI_SUBSYSTEM ["AI Procurement Subsystem (Dual-Mode Transparency)"]
+      SVC_GEMINI["GeminiService<br/>• Live Function Calling Loop<br/>• Tools: search, details, compare, budget<br/>• Bounded Exponential Retry (3 Attempts)"]
+      SVC_HEURISTIC["Heuristic Procurement Engine<br/>• Keyword Intent Extraction<br/>• Budget Constraint Solver<br/>• Transparent Fallback (No Fake AI)"]
+    end
+
+    SVC_APPROVAL["ApprovalService<br/>• HMAC-SHA256 Challenge & Token Signing<br/>• Private Secret Getter (Fail-Closed)<br/>• 10-Minute TTL Expiration<br/>• Timing-Safe Digest Equality<br/>• Single-Use Invalidation"]
+    
+    subgraph PAYPAL_SUBSYSTEM ["PayPal Gateway Bridge (Simulation vs Live Separation)"]
+      SVC_PAYPAL["PayPalService Bridge<br/>• Idempotent Orders v2 Dispatch<br/>• Webhook Signature Ingestion"]
+      PAYPAL_SIM["Safe Sandbox Simulation<br/>• Condition: ALLOW_PAYPAL_SIMULATION=true<br/>• Synthetic Order: SANDBOX_STAGE2_*<br/>• Simulation Notice Banner"]
+      PAYPAL_LIVE["Live PayPal Sandbox API<br/>• OAuth2 Client Credentials Bearer<br/>• Endpoint: api-m.sandbox.paypal.com"]
+    end
+  end
+
+  subgraph ACTIVE_RUNTIME_STORAGE ["ACTIVE APPLICATION RUNTIME STORAGE (Authoritative)"]
+    direction TB
+    RUNTIME_NOTE["Authoritative Runtime: File-Backed JSON Store (.data/ or DATA_STORE_DIR)"]
+    STORE_ORDERS["PayPalOrderStore<br/>• .data/orders/PP-ORD-*.json<br/>• State: CREATED | CAPTURED"]
+    STORE_APPROVALS["ApprovalService File Store<br/>• .data/approvals/appr_tk_*.json<br/>• Status: PENDING | APPROVED | CONSUMED"]
+    STORE_AUDIT["AuditLogger File Store<br/>• .data/audit/audit-YYYY-MM-DD.log<br/>• Tamper Attempts & Security Events"]
+  end
+
+  subgraph ISOLATED_TEST_PERSISTENCE ["ISOLATED PERSISTENCE & VALIDATION INFRASTRUCTURE (Rehearsal Only - No Production Cutover)"]
+    direction TB
+    POSTGRES_NOTE["PostgreSQL Relational Persistence Subsystem<br/>Validated strictly in test/rehearsal environments (procurepilot_delta_test_*)<br/>No production traffic routing or dual-writes enabled"]
+    
+    DB_MIGRATOR["Migration Engine (Migrator)<br/>• Advisory Lock: 83921049281<br/>• Sequential Migrations 001–008<br/>• Deterministic Checksum Verification"]
+    
+    DB_DELTA_RECON["Controlled Delta Reconciler (DeltaReconciler)<br/>• assertDatabaseSafety Procedural Guards<br/>• HMAC State-to-Status Binding Verification<br/>• Flat-File Capture De-authorization (78 stubs excluded)<br/>• Atomic Transaction Rollback on Failure"]
+    
+    DB_PROCEDURES["Hardened Database Procedures & Roles<br/>• Role: procurepilot_legacy_importer (NOLOGIN)<br/>• Role: procurepilot_refund_executor (NOLOGIN)<br/>• Role: procurepilot_reconciliation_operator (NOLOGIN)<br/>• reconcile_legacy_order_status_transition (4-arg & 5-arg)<br/>• create_refund_reservation (Row Lock FOR UPDATE)"]
+    
+    DB_AUDIT_TRAIL["Append-Only Immutability Triggers<br/>• trg_protect_order_state_transition_audit (Blocks UPDATE/DELETE)<br/>• trg_enforce_order_provenance_security<br/>• trg_enforce_approval_provenance"]
+
+    DB_REVERSE_EXPORT["Reverse-Export & Rollback Harness<br/>• ReverseExporter Validates Data Loss Freedom<br/>• Non-Destructive Rehearsal Staging"]
+  end
+
+  subgraph EXTERNAL_PROVIDERS ["External Cloud Providers (Sandbox & LLM)"]
+    EXT_GEMINI["Google Gemini API<br/>Model: gemini-flash-latest<br/>Endpoint: generativelanguage.googleapis.com"]
+    EXT_PAYPAL["PayPal Sandbox REST API v2<br/>OAuth2 Token & Orders v2<br/>Endpoint: api-m.sandbox.paypal.com"]
+  end
+
+  %% --- CLIENT TO API FLOWS ---
+  UI_COPILOT -->|"1. Natural Language RFQ"| API_PROCURE
+  UI_DASHBOARD -->|"Catalogue Query"| API_CATALOG
+  UI_CART -->|"2. Reconcile Cart"| API_CART_VAL
+  UI_GATE -->|"3. Generate Challenge"| API_APPR_CHALLENGE
+  UI_GATE -->|"4. Sign Requisition"| API_APPR_SIGN
+  UI_GATE -->|"5. Create Order"| API_PAYPAL_CREATE
+  UI_CART -->|"Capture Request"| API_PAYPAL_CAPTURE
+
+  %% --- API TO SERVICES FLOWS ---
+  API_PROCURE -->|"Analyze Request"| SVC_GEMINI
+  API_CATALOG -->|"Get Products"| SVC_CATALOG
+  API_CART_VAL -->|"Authoritative Pricing"| SVC_CATALOG
+  API_APPR_CHALLENGE -->|"Create Challenge"| SVC_APPROVAL
+  API_APPR_SIGN -->|"Verify & Sign"| SVC_APPROVAL
+  API_PAYPAL_CREATE -->|"Validate & Create"| SVC_PAYPAL
+  API_PAYPAL_CAPTURE -->|"Execute Capture"| SVC_PAYPAL
+  API_PAYPAL_WEBHOOK -->|"Verify Signature"| SVC_PAYPAL
+
+  %% --- SERVICE INTERNAL INTERACTIONS ---
+  SVC_GEMINI -.->|"If GEMINI_API_KEY Missing or Error"| SVC_HEURISTIC
+  SVC_GEMINI -->|"Function Calling Catalog Lookup"| SVC_CATALOG
+  SVC_HEURISTIC -->|"Authoritative Catalog Match"| SVC_CATALOG
+  SVC_APPROVAL -->|"Verify VerifiedTotal vs Cart"| SVC_CATALOG
+  SVC_PAYPAL -->|"Verify & Consume Ticket"| SVC_APPROVAL
+  SVC_PAYPAL -->|"Re-calculate Authoritative Total"| SVC_CATALOG
+
+  %% --- PAYPAL SIMULATION VS LIVE ROUTING ---
+  SVC_PAYPAL -->|"If Credentials Unset & ALLOW_PAYPAL_SIMULATION=true"| PAYPAL_SIM
+  SVC_PAYPAL -->|"If Credentials Configured"| PAYPAL_LIVE
+
+  %% --- EXTERNAL CALLS ---
+  SVC_GEMINI -->|"HTTPS Live Reasoning"| EXT_GEMINI
+  PAYPAL_LIVE -->|"HTTPS Orders v2"| EXT_PAYPAL
+
+  %% --- ACTIVE RUNTIME PERSISTENCE FLOWS ---
+  SVC_APPROVAL -->|"Save / Update Ticket JSON"| STORE_APPROVALS
+  PAYPAL_SIM -->|"Save Simulated Order JSON"| STORE_ORDERS
+  PAYPAL_LIVE -->|"Save Live Order JSON"| STORE_ORDERS
+  API_PROCURE -.->|"Security Events"| STORE_AUDIT
+  API_APPR_CHALLENGE -.->|"Security Events"| STORE_AUDIT
+  API_PAYPAL_CREATE -.->|"Security Events"| STORE_AUDIT
+
+  %% --- ISOLATED REHEARSAL & VALIDATION FLOWS ---
+  STORE_ORDERS -.->|"Read-Only Baseline Scan"| DB_DELTA_RECON
+  STORE_APPROVALS -.->|"Read-Only Baseline Scan"| DB_DELTA_RECON
+  DB_MIGRATOR -->|"Applies Migrations 001–008"| DB_PROCEDURES
+  DB_DELTA_RECON -->|"Calls Controlled Stored Procedure"| DB_PROCEDURES
+  DB_PROCEDURES -->|"Enforces Immutability"| DB_AUDIT_TRAIL
+  DB_DELTA_RECON -->|"Validates Reversibility"| DB_REVERSE_EXPORT
+
+  %% --- STYLING & HIGHLIGHTS ---
+  classDef clientZone fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+  classDef apiZone fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+  classDef serviceZone fill:#1e293b,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
+  classDef activeStorage fill:#064e3b,stroke:#34d399,stroke-width:3px,color:#f8fafc;
+  classDef isolatedPersistence fill:#451a03,stroke:#f59e0b,stroke-width:2px,stroke-dasharray: 5 5,color:#f8fafc;
+  classDef externalZone fill:#312e81,stroke:#6366f1,stroke-width:2px,color:#f8fafc;
+
+  class UI_LANDING,UI_DASHBOARD,UI_COPILOT,UI_COMPARISON,UI_CART,UI_GATE clientZone;
+  class API_PROCURE,API_CATALOG,API_CART_VAL,API_APPR_CHALLENGE,API_APPR_SIGN,API_PAYPAL_CREATE,API_PAYPAL_CAPTURE,API_PAYPAL_WEBHOOK apiZone;
+  class SVC_CATALOG,SVC_GEMINI,SVC_HEURISTIC,SVC_APPROVAL,SVC_PAYPAL,PAYPAL_SIM,PAYPAL_LIVE serviceZone;
+  class RUNTIME_NOTE,STORE_ORDERS,STORE_APPROVALS,STORE_AUDIT activeStorage;
+  class POSTGRES_NOTE,DB_MIGRATOR,DB_DELTA_RECON,DB_PROCEDURES,DB_AUDIT_TRAIL,DB_REVERSE_EXPORT isolatedPersistence;
+  class EXT_GEMINI,EXT_PAYPAL externalZone;

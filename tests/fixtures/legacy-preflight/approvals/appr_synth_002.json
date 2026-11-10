@@ -1,0 +1,13 @@
+{
+  "ticketId": "appr_tk_synth_002",
+  "status": "APPROVED",
+  "nonce": "nonce_synth_002",
+  "cartFingerprint": "fp_synth_002",
+  "verifiedTotal": "294.54",
+  "currency": "USD",
+  "expiresAt": 1799999999000,
+  "signoff": {
+    "userName": "Bob Approver",
+    "department": "Operations"
+  }
+}

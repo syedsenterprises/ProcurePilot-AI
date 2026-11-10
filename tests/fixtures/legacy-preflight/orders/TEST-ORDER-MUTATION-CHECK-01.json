@@ -1,0 +1,11 @@
+{
+  "orderId": "TEST-ORDER-MUTATION-CHECK-01",
+  "ticketId": "appr_tk_nonexistent_999",
+  "status": "CREATED",
+  "authorizedTotal": "500.00",
+  "authorizedSubtotal": "500.00",
+  "authorizedTax": "0.00",
+  "authorizedShipping": "0.00",
+  "currency": "USD",
+  "items": []
+}
