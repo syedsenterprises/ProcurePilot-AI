@@ -237,6 +237,18 @@ export async function runGeminiTests() {
       result.warningNote?.includes('1 over-budget'),
       'The response must transparently disclose the rejected over-budget recommendation'
     );
+    assert.ok(
+      result.summary.includes('$1401.84'),
+      'The response summary must report the final server-verified total including tax and shipping'
+    );
+    assert.ok(
+      !result.summary.includes('Two ergonomic chairs'),
+      'The model-authored summary must not override the server-verified final item list'
+    );
+    assert.ok(
+      !result.reasoningSteps.some((step) => step.detail.includes('Two ergonomic chairs')),
+      'Unverified model-authored narrative must not leak into the displayed reasoning trace'
+    );
 
     const budgetCheck = await executeCatalogTool('validate_budget', {
       items: result.recommendations.map((item) => ({
