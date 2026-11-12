@@ -200,6 +200,60 @@ export async function runGeminiTests() {
   }
 
   // -------------------------------------------------------------------------
+  // Test 6B: Live Gemini recommendations are revalidated against total budget
+  // -------------------------------------------------------------------------
+  console.log('Test 6B: Server-Side Rejection of Over-Budget Gemini Recommendations');
+  try {
+    globalThis.fetch = async () => {
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      summary: 'Two ergonomic chairs',
+                      detectedBudget: 2000,
+                      recommendations: [
+                        { productId: 'prod-hm-aeron-01', quantity: 1, reason: 'First chair' },
+                        { productId: 'prod-hm-aeron-01', quantity: 1, reason: 'Second chair' }
+                      ]
+                    })
+                  }
+                ]
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    const result = await geminiService.callLiveGeminiApi('Need an ergonomic chair under $2,000', 2000);
+    assert.strictEqual(result.recommendations.length, 1, 'The second chair must be rejected after total-budget reconciliation');
+    assert.strictEqual(result.bundleTotal, 1295, 'Only the accepted authoritative catalogue item should be counted');
+    assert.ok(
+      result.warningNote?.includes('1 over-budget'),
+      'The response must transparently disclose the rejected over-budget recommendation'
+    );
+
+    const budgetCheck = await executeCatalogTool('validate_budget', {
+      items: result.recommendations.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantityRecommended || 1
+      })),
+      maxBudget: 2000
+    });
+    const verifiedBudget = budgetCheck.result as { withinBudget: boolean; totalAmount: number };
+    assert.strictEqual(verifiedBudget.withinBudget, true, 'Final recommendations including tax and shipping must remain within budget');
+    assert.strictEqual(verifiedBudget.totalAmount, 1401.84);
+    console.log('  ✓ Over-budget AI candidate rejected; displayed recommendations pass complete authoritative total validation');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // -------------------------------------------------------------------------
   // Test 7: Bounded Exponential Backoff on 429 Quota Exhaustion & 503
   // -------------------------------------------------------------------------
   console.log('Test 7: Bounded Exponential Backoff on Transient 429 & 503');
@@ -287,5 +341,22 @@ export async function runGeminiTests() {
     Math.round(calculatedSum * 100) / 100,
     'Bundle total must equal the exact sum of authoritative product prices'
   );
-  console.log('  ✓ Budget compliance verified and bundle total verified against authoritative pricing');
+  const completeCartBudget = await executeCatalogTool('validate_budget', {
+    items: budgetTestResult.recommendations.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantityRecommended || 1
+    })),
+    maxBudget: 2000
+  });
+  const completeCartBudgetResult = completeCartBudget.result as { withinBudget: boolean; totalAmount: number };
+  assert.strictEqual(
+    completeCartBudgetResult.withinBudget,
+    true,
+    'Heuristic recommendations including tax and shipping must remain within the budget'
+  );
+  assert.ok(
+    completeCartBudgetResult.totalAmount <= 2000,
+    'The full heuristic checkout total must not exceed the authorized budget'
+  );
+  console.log('  ✓ Budget compliance verified against complete authoritative checkout total, including tax and shipping');
 }

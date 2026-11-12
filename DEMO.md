@@ -9,7 +9,7 @@
 - **Hosted application:** https://procurepilot-ai-1mcw.onrender.com/
 - **Procurement console:** https://procurepilot-ai-1mcw.onrender.com/dashboard
 - **Source repository:** https://github.com/syedsenterprises/ProcurePilot-AI
-- **Verified on November 12, 2026:** hosted homepage and dashboard returned HTTP 200; `/api/catalog` returned 14 products; a live `/api/procure` request returned `provider: gemini-api`, `aiStatus: live`, four recommendations within a $5,000 budget, and Gemini catalogue tool calls (`search_products`, `validate_budget`).
+- **Verified on November 12, 2026:** hosted homepage and dashboard returned HTTP 200; `/api/catalog` returned 14 products; a live `/api/procure` request confirmed `provider: gemini-api` and `aiStatus: live`. That test exposed a total-budget reconciliation gap in model recommendations. The current source now checks every candidate against authoritative stock, quantity, tax, shipping and the full budget before returning it; regression coverage verifies rejection of an over-budget candidate.
 - **PayPal boundary:** The application uses PayPal Orders v2 in Sandbox when sandbox credentials are configured. A genuine Sandbox order and capture were independently verified on November 11, 2026 for $1,401.84 USD. A redacted receipt screenshot is included as `docs/screenshots/06-genuine-paypal-sandbox-receipt-redacted.png`. Do not create another payment solely to reproduce the evidence.
 - **Disclosure:** Sandbox funds are test funds. The application is a single-tenant hackathon prototype; runtime order state is file-backed, PostgreSQL migrations were validated separately, and the approver identity is self-attested demo data rather than enterprise SSO.
 

@@ -409,11 +409,68 @@ Execute required catalog tool calls to find and validate the best items, then pr
     // Reconcile against authoritative catalog to prevent hallucination
     const recommendations: ProductRecommendation[] = [];
     let bundleTotal = 0;
+    const queryBudget = this.runHeuristicProcurementEngine(query, undefined, department).detectedBudget;
+    const budgetCap =
+      typeof explicitBudget === 'number' && Number.isFinite(explicitBudget) && explicitBudget > 0
+        ? explicitBudget
+        : queryBudget ??
+          (typeof parsed.detectedBudget === 'number' &&
+          Number.isFinite(parsed.detectedBudget) &&
+          parsed.detectedBudget > 0
+            ? parsed.detectedBudget
+            : undefined);
+    let budgetRejectedCount = 0;
+    let unavailableRejectedCount = 0;
 
     for (const rec of parsed.recommendations || []) {
       const product = catalogService.getProductById(rec.productId);
       if (product) {
-        const qty = typeof rec.quantity === 'number' && rec.quantity > 0 ? rec.quantity : 1;
+        const qty =
+          typeof rec.quantity === 'number' &&
+          Number.isSafeInteger(rec.quantity) &&
+          rec.quantity > 0 &&
+          rec.quantity <= 999
+            ? rec.quantity
+            : 1;
+        const proposedItems = [
+          ...recommendations.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantityRecommended || 1
+          })),
+          { productId: product.id, quantity: qty }
+        ];
+        const reconciliation = catalogService.reconcileCart(proposedItems, budgetCap);
+
+        // The model is advisory only. Reject any candidate that fails authoritative stock,
+        // quantity, tax, shipping, or total-budget reconciliation before it reaches the UI.
+        if (!product.inStock || product.stockCount < qty || !reconciliation.isValid) {
+          if (reconciliation.budgetCheck.isWithinBudget === false) {
+            budgetRejectedCount++;
+            auditLogger.log(
+              'GEMINI_BUDGET_OVERFLOW_REJECTED',
+              'WARN',
+              'Over-budget AI recommendation rejected by authoritative cart reconciliation.',
+              {
+                details: {
+                  productId: product.id,
+                  quantity: qty,
+                  proposedTotal: reconciliation.verifiedTotal,
+                  budgetCap
+                }
+              }
+            );
+          } else {
+            unavailableRejectedCount++;
+            auditLogger.log(
+              'GEMINI_UNAVAILABLE_PRODUCT_REJECTED',
+              'WARN',
+              'AI recommendation rejected because the product or quantity is unavailable.',
+              { details: { productId: product.id, quantity: qty, stockCount: product.stockCount } }
+            );
+          }
+          continue;
+        }
+
         recommendations.push({
           productId: product.id,
           product,
@@ -436,24 +493,68 @@ Execute required catalog tool calls to find and validate the best items, then pr
       }
     }
 
+    if (budgetRejectedCount > 0) {
+      dynamicReasoningSteps.push({
+        step: dynamicReasoningSteps.length + 1,
+        phase: 'constraint_solving',
+        title: 'Server-Side Budget Enforcement',
+        detail: `Rejected ${budgetRejectedCount} AI candidate item(s) because the fully reconciled cart total, including tax and shipping, would exceed the ${budgetCap ? `$${budgetCap.toFixed(2)}` : 'requested'} budget cap.`,
+        status: 'completed'
+      });
+    }
+
+    if (unavailableRejectedCount > 0) {
+      dynamicReasoningSteps.push({
+        step: dynamicReasoningSteps.length + 1,
+        phase: 'constraint_solving',
+        title: 'Availability & Quantity Enforcement',
+        detail: `Rejected ${unavailableRejectedCount} AI candidate item(s) that failed authoritative stock or quantity checks.`,
+        status: 'completed'
+      });
+    }
+
+    const finalCartReconciliation = catalogService.reconcileCart(
+      recommendations.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantityRecommended || 1
+      })),
+      budgetCap
+    );
+
     // Final reasoning step
     dynamicReasoningSteps.push({
       step: dynamicReasoningSteps.length + 1,
       phase: 'synthesis',
       title: 'Authoritative Catalog Reconciliation',
-      detail: `Reconciled ${recommendations.length} recommended items with server-side catalog. Bundle total: $${bundleTotal.toFixed(
+      detail: `Reconciled ${recommendations.length} recommended items. Subtotal: $${bundleTotal.toFixed(
         2
-      )}.`,
+      )}; total including tax and shipping: $${finalCartReconciliation.verifiedTotal.toFixed(2)}.${budgetCap ? ` Budget cap: $${budgetCap.toFixed(2)}.` : ''}`,
       status: 'completed'
     });
 
+    const baseSummary =
+      recommendations.length === 0 && budgetRejectedCount > 0
+        ? `Gemini's proposed bundle exceeded the authorized total budget of $${budgetCap?.toFixed(2) ?? 'the requested amount'} after tax and shipping. All over-budget candidates were rejected; no items were added.`
+        : parsed.summary ||
+          `ProcurePilot AI selected ${recommendations.length} items optimized for your requirements.`;
+    const budgetSummary =
+      budgetRejectedCount > 0
+        ? ` Server-side budget validation excluded ${budgetRejectedCount} item(s) that would have exceeded the total budget including tax and shipping.`
+        : '';
+    const availabilitySummary =
+      unavailableRejectedCount > 0
+        ? ` Server-side catalogue checks excluded ${unavailableRejectedCount} unavailable or invalid item(s).`
+        : '';
+
     return {
-      summary:
-        parsed.summary ||
-        `ProcurePilot AI selected ${recommendations.length} items optimized for your requirements.`,
-      detectedBudget: parsed.detectedBudget || explicitBudget,
+      summary: `${baseSummary}${budgetSummary}${availabilitySummary}`,
+      detectedBudget: budgetCap ?? parsed.detectedBudget,
       recommendations,
       bundleTotal: Math.round(bundleTotal * 100) / 100,
+      warningNote:
+        budgetRejectedCount + unavailableRejectedCount > 0
+          ? `Authoritative server-side reconciliation excluded ${budgetRejectedCount} over-budget and ${unavailableRejectedCount} unavailable candidate item(s).`
+          : undefined,
       reasoningSteps:
         parsed.reasoningSteps && parsed.reasoningSteps.length > 0
           ? [...dynamicReasoningSteps, ...parsed.reasoningSteps]
@@ -582,7 +683,16 @@ Execute required catalog tool calls to find and validate the best items, then pr
     allMatching.sort((a, b) => b.rating - a.rating || a.price - b.price);
 
     for (const product of allMatching) {
-      if (currentTotal + product.price <= effectiveBudget) {
+      const proposedItems = [
+        ...recommendations.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantityRecommended || 1
+        })),
+        { productId: product.id, quantity: 1 }
+      ];
+      const reconciliation = catalogService.reconcileCart(proposedItems, effectiveBudget);
+
+      if (product.inStock && product.stockCount > 0 && reconciliation.isValid) {
         recommendations.push({
           productId: product.id,
           product,
@@ -602,7 +712,13 @@ Execute required catalog tool calls to find and validate the best items, then pr
       const cheapest = [...catalogService.getProducts()]
         .filter((p) => p.inStock)
         .sort((a, b) => a.price - b.price)[0];
-      if (cheapest) {
+      if (
+        cheapest &&
+        catalogService.reconcileCart(
+          [{ productId: cheapest.id, quantity: 1 }],
+          effectiveBudget
+        ).isValid
+      ) {
         recommendations.push({
           productId: cheapest.id,
           product: cheapest,
@@ -649,9 +765,12 @@ Execute required catalog tool calls to find and validate the best items, then pr
     ];
 
     return {
-      summary: `ProcurePilot Heuristic Engine recommended a ${recommendations.length}-item bundle totaling $${currentTotal.toFixed(
-        2
-      )} matching your ${department || 'business'} requirements.`,
+      summary:
+        recommendations.length > 0
+          ? `ProcurePilot Heuristic Engine recommended a ${recommendations.length}-item bundle totaling $${currentTotal.toFixed(
+              2
+            )} matching your ${department || 'business'} requirements. The authoritative total including tax and shipping remains within the $${effectiveBudget.toFixed(2)} budget.`
+          : `No in-stock catalogue items fit within the $${effectiveBudget.toFixed(2)} total budget after tax and shipping. No items were recommended.`,
       detectedBudget,
       recommendations,
       bundleTotal: Math.round(currentTotal * 100) / 100,

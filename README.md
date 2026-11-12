@@ -15,7 +15,7 @@ Users describe what equipment they need in plain English, specify target budgets
 
 - **Hosted demo:** https://procurepilot-ai-1mcw.onrender.com/dashboard
 - **Public source:** https://github.com/syedsenterprises/ProcurePilot-AI (MIT License)
-- **AI:** Google Gemini API with server-side catalogue tools. The live hosted endpoint was verified on November 12, 2026; it returned four budget-constrained recommendations and executed catalogue search and budget-validation tool calls.
+- **AI:** Google Gemini API with server-side catalogue tools. Live model output is treated as advisory: each proposed item and running cart is rechecked against authoritative product stock, quantities, tax, shipping and the requested total budget before recommendations are returned. Over-budget candidates are rejected and disclosed in the reasoning trace. Regression coverage includes a model response that proposes two $1,295 chairs against a $2,000 total cap; the second item is rejected because the reconciled total would be $2,803.68.
 - **PayPal:** PayPal Orders v2 Sandbox checkout is integrated server-side. A genuine Sandbox payment capture for **$1,401.84 USD** was independently checked against the PayPal Sandbox Orders API on November 11, 2026. A public receipt screenshot is available in `docs/screenshots/06-genuine-paypal-sandbox-receipt-redacted.png`; transaction identifiers are redacted.
 - **Runtime disclosure:** This is a single-tenant hackathon prototype. Runtime order persistence remains file-backed; PostgreSQL migrations and reconciliation were validated separately, not cut over. Approver identity is self-attested demo data, not enterprise SSO. Sandbox funds are not real money.
 
