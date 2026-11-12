@@ -2,7 +2,16 @@
 
 **Document Purpose:** Step-by-step evaluator guide to demonstrate ProcurePilot AI's agentic procurement workflow, zero-trust governance safeguards, and automated security suites in a safe local environment.  
 **Repository:** ProcurePilot AI (Root Directory)  
-**Target Audience:** Evaluators, architects, and technical reviewers.
+**Target Audience:** PayPal AI Hackathon evaluators, architects, and technical reviewers.
+
+## Hackathon Demo — Current Hosted Build
+
+- **Hosted application:** https://procurepilot-ai-1mcw.onrender.com/
+- **Procurement console:** https://procurepilot-ai-1mcw.onrender.com/dashboard
+- **Source repository:** https://github.com/syedsenterprises/ProcurePilot-AI
+- **Verified on November 12, 2026:** hosted homepage and dashboard returned HTTP 200; `/api/catalog` returned 14 products; a live `/api/procure` request returned `provider: gemini-api`, `aiStatus: live`, four recommendations within a $5,000 budget, and Gemini catalogue tool calls (`search_products`, `validate_budget`).
+- **PayPal boundary:** The application uses PayPal Orders v2 in Sandbox when sandbox credentials are configured. A genuine Sandbox order and capture were independently verified on November 11, 2026 for $1,401.84 USD. A redacted receipt screenshot is included as `docs/screenshots/06-genuine-paypal-sandbox-receipt-redacted.png`. Do not create another payment solely to reproduce the evidence.
+- **Disclosure:** Sandbox funds are test funds. The application is a single-tenant hackathon prototype; runtime order state is file-backed, PostgreSQL migrations were validated separately, and the approver identity is self-attested demo data rather than enterprise SSO.
 
 ---
 
@@ -46,7 +55,7 @@ GEMINI_MODEL=gemini-flash-latest
 # 2. Approval HMAC Secret (REQUIRED FOR APPROVAL GATE)
 # Must be non-empty for cryptographic signing. Any secure string works.
 # ----------------------------------------------------------------------
-APPROVAL_SECRET=demo_evaluator_secure_hmac_secret_2026
+APPROVAL_SECRET=<generate-a-private-64-character-hex-secret>
 
 # ----------------------------------------------------------------------
 # 3. PayPal Sandbox (OPTIONAL FOR DEMO)
@@ -74,8 +83,7 @@ DATA_STORE_DIR=./.data-demo
 > In default operation, simulated orders and approval tickets write to `.data/orders` and `.data/approvals`. Setting `DATA_STORE_DIR=./.data-demo` directs all new runtime writes into an isolated folder, preserving the 81 baseline orders and 219 historical tickets intact.
 
 > [!WARNING]
-> **Demo Secret Security Disclosure:**  
-> The value `demo_evaluator_secure_hmac_secret_2026` is a public example secret intended strictly for local evaluation and automated testing. It must **never** be reused in production, staging, or any publicly accessible deployment. Production environments must configure a cryptographically secure, high-entropy secret (e.g., generated via `openssl rand -hex 32`) supplied through authoritative server environment variables.
+> **Secret handling:** Generate a fresh secret for every environment with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Keep it in the uncommitted `.env.local`; never paste it into source control, screenshots, chat, or the Devpost submission. Do not reuse a public example value.
 
 ---
 

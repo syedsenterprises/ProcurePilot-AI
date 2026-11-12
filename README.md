@@ -11,6 +11,14 @@
 
 Users describe what equipment they need in plain English, specify target budgets, and receive structured, constraint-optimized hardware packages selected from a verified enterprise catalogue.
 
+### PayPal AI Hackathon — Working Demo & Verified Integration
+
+- **Hosted demo:** https://procurepilot-ai-1mcw.onrender.com/dashboard
+- **Public source:** https://github.com/syedsenterprises/ProcurePilot-AI (MIT License)
+- **AI:** Google Gemini API with server-side catalogue tools. The live hosted endpoint was verified on November 12, 2026; it returned four budget-constrained recommendations and executed catalogue search and budget-validation tool calls.
+- **PayPal:** PayPal Orders v2 Sandbox checkout is integrated server-side. A genuine Sandbox payment capture for **$1,401.84 USD** was independently checked against the PayPal Sandbox Orders API on November 11, 2026. A public receipt screenshot is available in `docs/screenshots/06-genuine-paypal-sandbox-receipt-redacted.png`; transaction identifiers are redacted.
+- **Runtime disclosure:** This is a single-tenant hackathon prototype. Runtime order persistence remains file-backed; PostgreSQL migrations and reconciliation were validated separately, not cut over. Approver identity is self-attested demo data, not enterprise SSO. Sandbox funds are not real money.
+
 ### The 8-Stage Procurement Workflow
 
 ```
@@ -181,7 +189,7 @@ ProcurePilot-AI/
 ### 1. Clone & Install Dependencies
 
 ```bash
-git clone https://github.com/your-org/procurepilot-ai.git
+git clone https://github.com/syedsenterprises/ProcurePilot-AI.git
 cd procurepilot-ai
 npm install
 ```
@@ -221,7 +229,7 @@ PGUSER=procurepilot_app
 PGPASSWORD=your_secure_password
 ```
 
-> **Evaluation Tip:** For zero-credential local evaluation, set only `APPROVAL_SECRET=demo_hmac_secret_2026` and `ALLOW_PAYPAL_SIMULATION=true`. The system will seamlessly run the AI Copilot via the Heuristic Rules Engine and simulate checkout approvals without connecting to external cloud services.
+> **Safe local evaluation:** Leave PayPal credentials unset and enable simulation only in a local development environment. Generate a fresh, private approval secret rather than copying a published example: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Set that value as `APPROVAL_SECRET` in your uncommitted `.env.local`. Without `GEMINI_API_KEY`, the app clearly identifies its heuristic fallback; with a valid key it uses the Gemini API. Simulation is not a PayPal transaction and must never be described as a genuine capture.
 
 ### 3. Run Development Server
 

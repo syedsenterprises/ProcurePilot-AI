@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCart } from '@/context/CartContext';
 import {
   ShieldAlert,
@@ -25,7 +25,14 @@ interface HumanApprovalGateProps {
 }
 
 export function HumanApprovalGate({ isOpen, onClose }: HumanApprovalGateProps) {
-  const { cart, cartSummary, budgetStatus, reconcileWithServer } = useCart();
+  const {
+    cart,
+    cartSummary,
+    budgetStatus,
+    reconcileWithServer,
+    pendingOrder,
+    discardPendingOrder
+  } = useCart();
 
   const [userName, setUserName] = useState('Alex Mercer (Procurement Lead)');
   const [department, setDepartment] = useState('Engineering & DevOps');
@@ -37,6 +44,44 @@ export function HumanApprovalGate({ isOpen, onClose }: HumanApprovalGateProps) {
   const [stepStatus, setStepStatus] = useState<string>('');
   const [orderResult, setOrderResult] = useState<PayPalOrderResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Synchronize recovered pending order from server session
+  useEffect(() => {
+    if (pendingOrder) {
+      setOrderResult({
+        success: !pendingOrder.isSimulated,
+        orderId: pendingOrder.orderId,
+        status: pendingOrder.status as any,
+        approvalUrl: pendingOrder.approvalUrl,
+        environment: 'sandbox',
+        createdAt: pendingOrder.createdAt,
+        totalAmount: {
+          currencyCode: 'USD',
+          value: pendingOrder.authorizedTotal.toFixed(2)
+        },
+        isSimulated: pendingOrder.isSimulated,
+        requiresManualReview: pendingOrder.isSimulated,
+        message: pendingOrder.isSimulated
+          ? 'Session Checkout Recovered: Stage 2 Cryptographic Gate Verified (Simulated Sandbox Order)'
+          : 'Session Checkout Recovered: Active PayPal Sandbox Order Authorized & Awaiting Payment'
+      });
+      if (pendingOrder.approverName) {
+        setUserName(pendingOrder.approverName);
+      }
+      if (pendingOrder.approverDepartment) {
+        setDepartment(pendingOrder.approverDepartment);
+      }
+    } else {
+      setOrderResult(null);
+    }
+  }, [pendingOrder]);
+
+  const handleDiscardOrder = async () => {
+    await discardPendingOrder();
+    setOrderResult(null);
+    setIsConfirmed(false);
+    setErrorMessage(null);
+  };
 
   if (!isOpen) return null;
 
@@ -343,6 +388,19 @@ export function HumanApprovalGate({ isOpen, onClose }: HumanApprovalGateProps) {
                       </a>
                     </div>
                   )}
+
+                  <div className="flex items-center justify-between pt-3 border-t border-emerald-800/40">
+                    <button
+                      type="button"
+                      onClick={handleDiscardOrder}
+                      className="text-xs text-rose-400 hover:text-rose-300 underline underline-offset-2 transition-colors"
+                    >
+                      Discard This Order & Start Over
+                    </button>
+                    <Button variant="secondary" size="sm" onClick={onClose}>
+                      Close
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="p-4 rounded-xl bg-slate-950 border border-purple-500/50 text-xs text-slate-300 space-y-3">
@@ -390,7 +448,14 @@ export function HumanApprovalGate({ isOpen, onClose }: HumanApprovalGateProps) {
                     </div>
                   )}
 
-                  <div className="flex justify-end pt-2">
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="button"
+                      onClick={handleDiscardOrder}
+                      className="text-xs text-rose-400 hover:text-rose-300 underline underline-offset-2 transition-colors"
+                    >
+                      Discard This Order & Start Over
+                    </button>
                     <Button variant="secondary" size="sm" onClick={onClose}>
                       Close
                     </Button>

@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useCart } from '@/context/CartContext';
 import { ProcurementMessage, ProcurementResponse } from '@/types/procurement';
 import { PromptPresets } from './PromptPresets';
 import { AgentThoughtFeed } from './AgentThoughtFeed';
+import { SAMPLE_PRODUCTS } from '@/services/catalog/products.data';
+import { loadChatSession, saveChatSession, clearChatSession } from '@/lib/storage/client-session';
 import {
   Sparkles,
   Send,
@@ -15,10 +17,20 @@ import {
   Check,
   DollarSign,
   Layers,
-  ArrowRight
+  ArrowRight,
+  RotateCcw
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+
+const DEFAULT_WELCOME_MESSAGE: ProcurementMessage = {
+  id: 'welcome-msg',
+  role: 'assistant',
+  content:
+    'Welcome to ProcurePilot AI. Describe what hardware or equipment your team needs, specify budget guidelines, and I will analyze our verified enterprise catalog to generate an optimized procurement proposal.',
+  timestamp: 'Just now',
+  provider: 'procurepilot-heuristic-engine'
+};
 
 export function ProcurementChat() {
   const { addToCart, cart, setBudget, budget, setIsCartOpen, setSelectedProductDetail } = useCart();
@@ -26,16 +38,59 @@ export function ProcurementChat() {
   const [inputQuery, setInputQuery] = useState('');
   const [inputBudget, setInputBudget] = useState<string>(budget ? budget.toString() : '');
   const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<ProcurementMessage[]>([
-    {
-      id: 'welcome-msg',
-      role: 'assistant',
-      content:
-        'Welcome to ProcurePilot AI. Describe what hardware or equipment your team needs, specify budget guidelines, and I will analyze our verified enterprise catalog to generate an optimized procurement proposal.',
-      timestamp: 'Just now',
-      provider: 'procurepilot-heuristic-engine'
+  const [messages, setMessages] = useState<ProcurementMessage[]>([DEFAULT_WELCOME_MESSAGE]);
+  const [isChatHydrated, setIsChatHydrated] = useState(false);
+  const hasLoadedChatRef = useRef(false);
+
+  // Sync inputBudget when budget from CartContext hydrates or changes
+  useEffect(() => {
+    if (budget !== null && budget !== undefined) {
+      setInputBudget(budget.toString());
     }
-  ]);
+  }, [budget]);
+
+  // Safe client hydration for chat messages on mount
+  useEffect(() => {
+    if (hasLoadedChatRef.current) return;
+    hasLoadedChatRef.current = true;
+
+    try {
+      const saved = loadChatSession();
+      if (saved && saved.messages && saved.messages.length > 0) {
+        // Enrich recommendations with authoritative catalogue products
+        const enriched = saved.messages.map((msg) => {
+          if (!msg.recommendations) return msg;
+          return {
+            ...msg,
+            recommendations: msg.recommendations.map((rec) => {
+              const authoritative = SAMPLE_PRODUCTS.find((p) => p.id === rec.product.id);
+              return {
+                ...rec,
+                product: authoritative || rec.product
+              };
+            })
+          };
+        });
+        setMessages(enriched);
+      }
+    } catch (err) {
+      console.warn('Failed to hydrate chat session:', err);
+    } finally {
+      setIsChatHydrated(true);
+    }
+  }, []);
+
+  // Persist messages strictly after hydration
+  useEffect(() => {
+    if (!isChatHydrated) return;
+    saveChatSession({ messages });
+  }, [messages, isChatHydrated]);
+
+  const handleResetSession = () => {
+    clearChatSession();
+    setMessages([DEFAULT_WELCOME_MESSAGE]);
+    setInputQuery('');
+  };
 
   const handleSubmit = async (queryText?: string, budgetOverride?: number) => {
     const textToSubmit = queryText || inputQuery;
@@ -145,7 +200,16 @@ export function ProcurementChat() {
           </div>
         </div>
 
-        <div>
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={handleResetSession}
+            type="button"
+            className="p-1.5 px-2.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors text-xs flex items-center gap-1.5 border border-slate-700/60"
+            title="Reset Conversation Session"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Reset Session</span>
+          </button>
           <Badge variant="purple" size="sm" className="gap-1.5">
             <Bot className="w-3.5 h-3.5" />
             <span>Dual-Mode AI Engine</span>

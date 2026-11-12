@@ -71,6 +71,23 @@ export interface PayPalCaptureResponse {
   orderDetails?: PayPalCapturedOrderDetails;
 }
 
+export interface RecoveredPendingOrder {
+  orderId: string;
+  ticketId: string;
+  status: string;
+  authorizedTotal: number;
+  authorizedSubtotal: number;
+  authorizedTax: number;
+  authorizedShipping: number;
+  currency: string;
+  approverName: string;
+  approverDepartment: string;
+  items: Array<{ productId: string; name: string; quantity: number; unitPrice: number }>;
+  createdAt: string;
+  approvalUrl?: string;
+  isSimulated?: boolean;
+}
+
 export interface PayPalWebhookHeaders {
   authAlgo: string;
   certUrl: string;

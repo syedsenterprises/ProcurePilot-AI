@@ -1,8 +1,11 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Product } from '@/types/product';
 import { CartItem, CartSummary, BudgetStatus, CartValidationResult } from '@/types/cart';
+import { RecoveredPendingOrder, PayPalCaptureResponse } from '@/types/paypal';
+import { SAMPLE_PRODUCTS } from '@/services/catalog/products.data';
+import { loadCartSession, saveCartSession, clearCartSession } from '@/lib/storage/client-session';
 
 interface CartContextType {
   cart: CartItem[];
@@ -27,19 +30,139 @@ interface CartContextType {
   serverReconciliation: CartValidationResult | null;
   isReconciling: boolean;
   reconcileWithServer: (approvalConfirmed?: boolean) => Promise<CartValidationResult | null>;
+  isHydrated: boolean;
+  pendingOrder: RecoveredPendingOrder | null;
+  recentReceipt: PayPalCaptureResponse | null;
+  isApprovalGateOpen: boolean;
+  setIsApprovalGateOpen: (open: boolean) => void;
+  discardPendingOrder: () => Promise<void>;
+  refreshSessionState: () => Promise<void>;
+  clearRecentReceipt: () => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [budget, setBudget] = useState<number | null>(4500); // Sensible default budget
+  const [budget, setBudget] = useState<number | null>(4500); // Default budget
   const [compareList, setCompareList] = useState<Product[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [selectedProductDetail, setSelectedProductDetail] = useState<Product | null>(null);
   const [serverReconciliation, setServerReconciliation] = useState<CartValidationResult | null>(null);
   const [isReconciling, setIsReconciling] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState<RecoveredPendingOrder | null>(null);
+  const [recentReceipt, setRecentReceipt] = useState<PayPalCaptureResponse | null>(null);
+  const [isApprovalGateOpen, setIsApprovalGateOpen] = useState(false);
+  const hasLoadedRef = useRef(false);
+
+  // Authoritative catalogue lookup
+  const getProductById = useCallback((id: string): Product | undefined => {
+    return SAMPLE_PRODUCTS.find((p) => p.id === id);
+  }, []);
+
+  const refreshSessionState = useCallback(async () => {
+    try {
+      const res = await fetch('/api/paypal/session-state', {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success) {
+        if (data.pendingOrder) {
+          setPendingOrder(data.pendingOrder);
+          setIsApprovalGateOpen(true);
+        } else {
+          setPendingOrder(null);
+        }
+        if (data.recentReceipt) {
+          setRecentReceipt(data.recentReceipt);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to query session checkout state:', err);
+    }
+  }, []);
+
+  const discardPendingOrder = useCallback(async () => {
+    try {
+      await fetch('/api/paypal/discard-pending', { method: 'POST' });
+    } catch (err) {
+      console.warn('Failed to discard pending order:', err);
+    } finally {
+      setPendingOrder(null);
+      setIsApprovalGateOpen(false);
+    }
+  }, []);
+
+  const clearRecentReceipt = useCallback(() => {
+    setRecentReceipt(null);
+  }, []);
+
+  // Safe client hydration on initial mount
+  useEffect(() => {
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+
+    try {
+      const saved = loadCartSession();
+      if (saved) {
+        if (saved.budget !== undefined) {
+          setBudget(saved.budget);
+        }
+
+        if (saved.items && saved.items.length > 0) {
+          const reconstructed: CartItem[] = [];
+          for (const item of saved.items) {
+            const product = getProductById(item.productId);
+            if (product && item.quantity > 0) {
+              reconstructed.push({
+                product,
+                quantity: item.quantity
+              });
+            }
+          }
+          if (reconstructed.length > 0) {
+            setCart(reconstructed);
+          }
+        }
+
+        if (saved.compareIds && saved.compareIds.length > 0) {
+          const reconstructedCompare: Product[] = [];
+          for (const id of saved.compareIds) {
+            const product = getProductById(id);
+            if (product) {
+              reconstructedCompare.push(product);
+            }
+          }
+          if (reconstructedCompare.length > 0) {
+            setCompareList(reconstructedCompare);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to hydrate cart session:', err);
+    } finally {
+      setIsHydrated(true);
+      refreshSessionState();
+    }
+  }, [getProductById, refreshSessionState]);
+
+  // Persist state updates to localStorage strictly AFTER hydration
+  useEffect(() => {
+    if (!isHydrated) return; // Prevent overwriting stored session with initial state
+
+    saveCartSession({
+      budget,
+      items: cart.map((item) => ({
+        productId: item.product.id,
+        quantity: item.quantity
+      })),
+      compareIds: compareList.map((p) => p.id)
+    });
+  }, [cart, budget, compareList, isHydrated]);
 
   // Local calculation (will be verified authoritatively server-side on checkout/validation)
   const cartSummary: CartSummary = useMemo(() => {
@@ -162,6 +285,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const clearCart = () => {
     setCart([]);
     setServerReconciliation(null);
+    clearCartSession(true);
   };
 
   const addToCompare = (product: Product) => {
@@ -210,7 +334,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setSelectedProductDetail,
         serverReconciliation,
         isReconciling,
-        reconcileWithServer
+        reconcileWithServer,
+        isHydrated,
+        pendingOrder,
+        recentReceipt,
+        isApprovalGateOpen,
+        setIsApprovalGateOpen,
+        discardPendingOrder,
+        refreshSessionState,
+        clearRecentReceipt
       }}
     >
       {children}

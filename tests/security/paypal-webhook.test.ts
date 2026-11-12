@@ -404,7 +404,15 @@ export async function runPayPalWebhookTests() {
     } else {
       delete process.env.PAYPAL_WEBHOOK_ID;
     }
-    process.env.PAYPAL_CLIENT_ID = originalClientId;
-    process.env.PAYPAL_CLIENT_SECRET = originalClientSecret;
+    if (originalClientId !== undefined) {
+      process.env.PAYPAL_CLIENT_ID = originalClientId;
+    } else {
+      delete process.env.PAYPAL_CLIENT_ID;
+    }
+    if (originalClientSecret !== undefined) {
+      process.env.PAYPAL_CLIENT_SECRET = originalClientSecret;
+    } else {
+      delete process.env.PAYPAL_CLIENT_SECRET;
+    }
   }
 }

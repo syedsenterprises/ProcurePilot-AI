@@ -12,7 +12,8 @@ This directory contains five authentic, un-mocked desktop screenshots of the Pro
 | [`02-chat-copilot.png`](./02-chat-copilot.png) | 1440 × 1200 px | 272.4 KB | `/dashboard` (Procure Tab) | Component-focused heuristic copilot composition: unclipped panel header, consistent $5,000 budget, all 4 reasoning stages, complete equipment cards, $3,898 total, demo badge & excluded dashboard heading |
 | [`03-spec-comparison.png`](./03-spec-comparison.png) | 1280 × 800 px | 280.9 KB | `/dashboard` (Catalogue Tab) | Multi-product architectural spec matrix with verified authentic imagery: Apple MacBook Pro 16" vs. Dell XPS 15 9530 |
 | [`04-human-approval-gate.png`](./04-human-approval-gate.png) | 1280 × 800 px | 147.0 KB | `/dashboard` (Cart Drawer) | Mandatory cryptographic human governance gate & pre-signoff HMAC approval challenge |
-| [`05-order-confirmation.png`](./05-order-confirmation.png) | 1440 × 1050 px | 184.8 KB | `/dashboard` (Checkout Handler) | Completely unclipped purchase order confirmation receipt: simulation disclosure, full ID grid, line items & governance stamp (zero dev indicators) |
+| [`05-order-confirmation.png`](./05-order-confirmation.png) | 1440 × 1050 px | 184.8 KB | `/dashboard` (Checkout Handler) | Local simulation receipt with explicit simulation disclosure; not evidence of a PayPal gateway capture |
+| [`06-genuine-paypal-sandbox-receipt-redacted.png`](./06-genuine-paypal-sandbox-receipt-redacted.png) | 1024 × 915 px | 228.8 KB | `/dashboard` (Receipt recovery) | Redacted UI evidence of a genuine PayPal Sandbox capture: COMPLETED status, itemization, 8.25% tax and $1,401.84 USD total; order, capture and approval identifiers removed |
 
 ---
 
@@ -109,7 +110,13 @@ This directory contains five authentic, un-mocked desktop screenshots of the Pro
 
 ---
 
+### 6. Genuine PayPal Sandbox Receipt (Redacted)
+- **Source:** Browser acceptance evidence captured on November 11, 2026 after an independently queried PayPal Sandbox Orders v2 order and completed capture.
+- **Displayed evidence:** `COMPLETED` status, Herman Miller Aeron line item, $1,295.00 subtotal, $106.84 tax and $1,401.84 USD total.
+- **Privacy:** PayPal order ID, capture transaction ID and HMAC approval ticket identifier are redacted in this public screenshot. The original unredacted evidence remains private and is not included in the repository.
+- **Boundary:** This is PayPal Sandbox test evidence, not a live-money or production transaction.
+
 ## 🛡️ Isolation & Reproducibility Guarantees
-- **Total Filesystem Isolation:** The demo ran with `DATA_STORE_DIR=./.data-demo`. All generated approval tickets, audit logs, rate-limit counters, and orders were written into `.data-demo/`.
-- **Zero Modification of Authoritative Data:** The 81 historical orders and 219 approvals in `.data/` were verified byte-for-byte identical via cryptographic SHA-256 hashes before and after execution.
-- **Zero External Network Calls:** Gemini API and PayPal sandbox endpoints were not contacted; all processing completed via local heuristic logic and offline simulation engines.
+- **Screenshots 01–05:** Captured in an isolated local demonstration using `DATA_STORE_DIR=./.data-demo`; local simulation records were written to `.data-demo/`.
+- **Baseline preservation for screenshots 01–05:** The 81 historical orders and 219 approvals in `.data/` were verified byte-for-byte identical before and after that local screenshot run.
+- **Network boundary:** Screenshots 01–05 used the local heuristic/simulation path without Gemini or PayPal network calls. Screenshot 06 is separate evidence from a genuine PayPal Sandbox transaction and necessarily involved PayPal Sandbox API communication.

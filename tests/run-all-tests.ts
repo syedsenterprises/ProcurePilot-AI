@@ -10,6 +10,7 @@ import { runMigratorUnitTests } from './db/migrator.test';
 import { runSchemaContractTests } from './db/schema-contract.test';
 import { runLegacyPreflightTests } from './db/legacy-preflight.test';
 import { runRefundIntegrityLogicTests } from './db/refund-integrity-logic.test';
+import { runRefreshPersistenceTests } from './persistence/refresh-persistence.test';
 import {
   setupTestIsolation,
   teardownTestIsolation,
@@ -43,6 +44,7 @@ async function main() {
     await runSchemaContractTests();
     await runLegacyPreflightTests();
     await runRefundIntegrityLogicTests();
+    await runRefreshPersistenceTests();
 
     console.log('\n================================================================');
     console.log('🎉 ALL AUTOMATED SECURITY & CHECKOUT LIFECYCLE TESTS PASSED (0 FAILURES)');

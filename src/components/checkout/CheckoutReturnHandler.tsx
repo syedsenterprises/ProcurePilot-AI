@@ -11,13 +11,15 @@ import {
   X,
   ArrowRight,
   Info,
-  RefreshCw
+  RefreshCw,
+  CheckCircle2,
+  Receipt
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 
 export function CheckoutReturnHandler() {
   const searchParams = useSearchParams();
-  const { clearCart, setIsCartOpen } = useCart();
+  const { clearCart, setIsCartOpen, recentReceipt, refreshSessionState } = useCart();
 
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureData, setCaptureData] = useState<PayPalCaptureResponse | null>(null);
@@ -70,6 +72,7 @@ export function CheckoutReturnHandler() {
 
         // Clear cart ONLY after server confirmation
         clearCart();
+        refreshSessionState();
 
         // Clean up URL query parameters
         if (typeof window !== 'undefined') {
@@ -232,7 +235,38 @@ export function CheckoutReturnHandler() {
         </div>
       )}
 
-      {/* 4. Full Verified Order Confirmation Modal */}
+      {/* 4. Recovered Recent Completed Order Banner */}
+      {recentReceipt && !isConfirmationOpen && (
+        <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-xs text-emerald-200 flex items-center justify-between gap-4 animate-fadeIn">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <div>
+              <span className="font-semibold text-emerald-100 block">
+                Completed Purchase Order Confirmed: {recentReceipt.orderId}
+              </span>
+              <span className="text-[11px] text-emerald-300/80">
+                Total: ${recentReceipt.orderDetails?.authorizedTotal.toFixed(2)} USD &bull; Verified in server registry
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setCaptureData(recentReceipt);
+                setIsConfirmationOpen(true);
+              }}
+              className="gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white border-none"
+            >
+              <Receipt className="w-3.5 h-3.5" />
+              <span>View Receipt</span>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Full Verified Order Confirmation Modal */}
       <OrderConfirmationModal
         isOpen={isConfirmationOpen}
         onClose={() => setIsConfirmationOpen(false)}

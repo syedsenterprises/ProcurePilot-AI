@@ -1,5 +1,5 @@
 import { catalogService } from '../catalog/catalog.service';
-import { payPalOrderStore, StoredPayPalOrder } from './paypal-order-store';
+import { payPalOrderStore, StoredPayPalOrder, hashSessionToken } from './paypal-order-store';
 import { approvalService } from '../approval/approval.service';
 import {
   PayPalCaptureResponse,
@@ -48,6 +48,8 @@ export class PayPalService {
     return Boolean(
       clientId &&
       clientSecret &&
+      clientId !== 'undefined' &&
+      clientSecret !== 'undefined' &&
       !clientId.includes('your_paypal_client_id') &&
       !clientSecret.includes('your_paypal_client_secret')
     );
@@ -307,6 +309,11 @@ export class PayPalService {
 
       // Development / Test Simulation Path
       const syntheticOrderId = `SANDBOX_STAGE2_${securityContext.ticketId.slice(8, 20)}`;
+      const simulatedApprovalUrl = `/dashboard?status=approved&token=${syntheticOrderId}`;
+      const sessionHash = securityContext.sessionToken
+        ? hashSessionToken(securityContext.sessionToken)
+        : undefined;
+
       const storedOrder: StoredPayPalOrder = {
         orderId: syntheticOrderId,
         ticketId: securityContext.ticketId,
@@ -321,7 +328,9 @@ export class PayPalService {
         items: reconciliation.verifiedItems,
         createdAt: new Date().toISOString(),
         idempotencyKey: securityContext.ticketId,
-        isSimulated: true
+        isSimulated: true,
+        sessionHash,
+        approvalUrl: simulatedApprovalUrl
       };
       payPalOrderStore.saveOrder(storedOrder);
 
@@ -415,6 +424,9 @@ export class PayPalService {
 
       const orderData = await res.json();
       const approveLink = orderData.links?.find((link: { rel: string; href: string }) => link.rel === 'approve')?.href;
+      const liveSessionHash = securityContext.sessionToken
+        ? hashSessionToken(securityContext.sessionToken)
+        : undefined;
 
       const storedOrder: StoredPayPalOrder = {
         orderId: orderData.id,
@@ -429,7 +441,9 @@ export class PayPalService {
         approverDepartment: request.approvalSignoff.department,
         items: reconciliation.verifiedItems,
         createdAt: orderData.create_time || new Date().toISOString(),
-        idempotencyKey: securityContext.ticketId
+        idempotencyKey: securityContext.ticketId,
+        sessionHash: liveSessionHash,
+        approvalUrl: approveLink
       };
       payPalOrderStore.saveOrder(storedOrder);
 
@@ -575,7 +589,7 @@ export class PayPalService {
     }
   }
 
-  private formatOrderDetails(order: StoredPayPalOrder) {
+  public formatOrderDetails(order: StoredPayPalOrder) {
     return {
       orderId: order.orderId,
       ticketId: order.ticketId,

@@ -1,5 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+
+export function hashSessionToken(sessionToken: string): string {
+  return crypto.createHash('sha256').update(sessionToken).digest('hex');
+}
 
 export interface StoredPayPalOrder {
   orderId: string;
@@ -18,6 +23,8 @@ export interface StoredPayPalOrder {
   captureId?: string;
   idempotencyKey?: string;
   isSimulated?: boolean;
+  sessionHash?: string;
+  approvalUrl?: string;
 }
 
 export class PayPalOrderStore {
@@ -90,6 +97,48 @@ export class PayPalOrderStore {
       // Fallback
     }
     return null;
+  }
+
+  public getOrdersBySessionHash(sessionHash: string): StoredPayPalOrder[] {
+    if (!sessionHash) return [];
+    const ordersMap = new Map<string, StoredPayPalOrder>();
+
+    // 1. Scan memory store
+    for (const order of this.memoryStore.values()) {
+      if (order.sessionHash === sessionHash) {
+        ordersMap.set(order.orderId, order);
+      }
+    }
+
+    // 2. Read from disk store to ensure persistence across server restarts / free instance reloads
+    try {
+      this.ensureDirectory();
+      if (fs.existsSync(this.storeDir)) {
+        const files = fs.readdirSync(this.storeDir);
+        for (const file of files) {
+          if (!file.endsWith('.json')) continue;
+          const orderId = file.slice(0, -5);
+          if (ordersMap.has(orderId)) continue;
+          try {
+            const filePath = path.join(this.storeDir, file);
+            const raw = fs.readFileSync(filePath, 'utf8');
+            const order = JSON.parse(raw) as StoredPayPalOrder;
+            this.memoryStore.set(order.orderId, order);
+            if (order.sessionHash === sessionHash) {
+              ordersMap.set(order.orderId, order);
+            }
+          } catch {
+            // Ignore invalid file
+          }
+        }
+      }
+    } catch {
+      // Ignore read errors
+    }
+
+    return Array.from(ordersMap.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   }
 }
 
